@@ -1,115 +1,276 @@
 import os
 import asyncio
+import uuid
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+print("Loaded environment variables.")
+
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-# from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+import json
+import inspect
+from google.genai import types
 
-# Load env vars
-# load_dotenv()
+# Import ADK components
+try:
+    # Reverting to the 'google.adk' namespace based on initial agent code structure
+    from google.adk.agents.llm_agent import Agent
+    from google.adk.runners import InMemoryRunner as Runner
+    from google.adk.events import Event
+    print("Successfully imported ADK components from google.adk.")
+except ImportError as e:
+    print(f"ADK Import Error in server.py: {e}. Make sure 'google-adk' is installed and the import paths are correct.")
+    raise e
 
-from agents.travel_agent import build_travel_agent
+# Import agent builders
+# Assuming agents are in a directory and have a build_<agent_name> function
+from .agents.travel_imagination import build_travel_agent as build_travel_agent_adk
+# Add other agents here if they exist
 
-app = FastAPI()
+# Agent registry
+AGENT_REGISTRY = {
+    "travel_agent": build_travel_agent_adk,
+    # Add other agents here
+}
+
+# --- FastAPI App Setup ---
+app = FastAPI(
+    title="ADK API Server",
+    description="API server for ADK agents",
+    version="1.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # For dev, allow all
+    allow_origins=["*"],  # For dev, allow all. In production, restrict this.
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class AgentRequest(BaseModel):
+# --- Request Models ---
+class AgentQuery(BaseModel):
     query: str
+    user_id: str = "default_user"
+    session_id: str | None = None
 
-@app.websocket("/ws/run_agent")
-async def websocket_endpoint(websocket: WebSocket):
-    print("WS: Connection accepted")
+class AgentRunResponse(BaseModel):
+    status: str
+    message: str | None = None
+    final_data: dict | None = None
+    history: list | None = None # For API endpoint
+
+# --- API Endpoints ---
+
+@app.get("/list-apps", summary="List available agents")
+async def list_apps():
+    """Lists all available agents that can be run."""
+    return {"agents": list(AGENT_REGISTRY.keys())}
+
+# For SSE streaming of agent events
+@app.websocket("/ws/run_agent/{agent_name}")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    agent_name: str
+):
+    """WebSocket endpoint to run an agent and stream events."""
     await websocket.accept()
+    
+    if agent_name not in AGENT_REGISTRY:
+        await websocket.send_json({"type": "error", "message": f"Agent '{agent_name}' not found."})
+        await websocket.close()
+        return
+
+    agent_builder = AGENT_REGISTRY[agent_name]
+
     try:
         data = await websocket.receive_json()
-        query = data.get("query")
-        print(f"WS: Received query: {query}")
+        query_input = data.get("query")
+        # Use provided IDs or generate defaults
+        user_id = data.get("user_id", "default_ws_user")
+        session_id = data.get("session_id") or str(uuid.uuid4())
         
-        if not query:
-            await websocket.send_json({"type": "error", "message": "No query provided"})
+        if not query_input:
+            await websocket.send_json({"type": "error", "message": "No query provided in message."})
             return
 
-        loop = asyncio.get_event_loop()
+        # Instantiate the agent and runner
+        agent = agent_builder()
+        runner = Runner(agent=agent, app_name="travel_imagination_app")       
         
-        def log_callback(msg):
-            print(f"WS: Log callback received: {msg}")
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    websocket.send_json({"type": "log", "message": str(msg)}), 
-                    loop
-                )
-            except Exception as e:
-                print(f"WS: Error in log callback: {e}")
+        print(f"WS ({agent_name}): Starting agent execution with query: {query_input}")
 
-        print("WS: Starting agent execution...")
-        agent = build_travel_agent()
-        context = await asyncio.to_thread(agent.execute, query, logger=log_callback)
-        print("WS: Agent execution finished")
+        # Explicitly create the session
+        await runner.session_service.create_session(user_id=user_id, session_id=session_id, app_name="travel_imagination_app")
+        
+        # Construct the message object
+        new_message = types.Content(role="user", parts=[types.Part.from_text(text=query_input)])
+        
+        final_state = {}
 
-        if context.get("error"):
-            await websocket.send_json({"type": "error", "message": context.get("error")})
-        else:
-            result = {
-                "status": "success",
-                "history": context.history,
-                "final_data": {
-                    "place": context.get("place_data"),
-                    "draft": context.get("current_draft"),
-                    "image_url": context.get("image_url"),
-                    "judge_verdict": context.get("judge_result")
-                }
-            }
-            await websocket.send_json({"type": "result", "data": result})
+        # Run the agent and stream events
+        async for event in runner.run_async(user_id=user_id, session_id=session_id, new_message=new_message, state_delta={"initial_input": query_input}):
+            
+            # 1. Handle State Updates
+            if event.actions and event.actions.state_delta:
+                state_delta = event.actions.state_delta
+                final_state.update(state_delta)
+                print(f"WS ({agent_name}) State Update: {state_delta.keys()}")
+                await websocket.send_json({"type": "state_update", "data": state_delta})
+            
+            # 2. Handle Errors
+            if event.error_message:
+                print(f"WS ({agent_name}) Sending Error: {event.error_message}")
+                await websocket.send_json({"type": "error", "message": event.error_message})
+                # Don't break immediately, maybe other events have info, but typically error ends it.
+            
+            # 3. Handle Logs / Content
+            # Extract text from content parts if available
+            log_message = ""
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if part.text:
+                        log_message += part.text
+            
+            if log_message:
+                sender = event.author or "Agent"
+                # Optionally filter out pure JSON outputs if they are just tool inputs/outputs, 
+                # but for now logging everything is safer for debug.
+                await websocket.send_json({"type": "log", "message": f"[{sender}]: {log_message}"})
+            
+            # Log tool calls
+            if event.content and event.content.parts:
+                 for part in event.content.parts:
+                     if part.function_call:
+                         sender = event.author or "Agent"
+                         func_name = part.function_call.name
+                         func_args = part.function_call.args
+                         await websocket.send_json({"type": "log", "message": f"[{sender}]: Calling tool '{func_name}' with args: {func_args}..."})
+
+        # 4. Send Final Result
+        print(f"WS ({agent_name}): Agent execution finished. Sending result.")
+        
+        # Retrieve full session state to ensure nothing was missed
+        try:
+            session = await runner.session_service.get_session(session_id=session_id, user_id=user_id, app_name="travel_imagination_app")
+            if session and session.state:
+                print(f"WS ({agent_name}) Full Session State Keys: {session.state.keys()}")
+                final_state.update(session.state)
+        except Exception as e_state:
+            print(f"WS ({agent_name}) Warning: Could not retrieve full session state: {e_state}")
+
+        print(f"WS ({agent_name}) FINAL PAYLOAD TO FRONTEND: {json.dumps(final_state, default=str)}")
+        await websocket.send_json({"type": "result", "data": {"final_data": final_state}})
             
     except WebSocketDisconnect:
-        print("Client disconnected")
+        print(f"WS ({agent_name}): Client disconnected")
     except Exception as e:
-        print(f"WS Error: {e}")
+        import traceback
+        print(f"WS ({agent_name}) Runtime Error: {e}")
+        traceback.print_exc() # Print full traceback
         try:
-            await websocket.send_json({"type": "error", "message": str(e)})
+            await websocket.send_json({"type": "error", "message": f"An error occurred: {str(e)}"})
         except:
-            pass
+            pass # Ignore if connection is already closed
 
-@app.post("/api/run_agent")
-async def run_agent(req: AgentRequest):
-    print(f"Received request for: {req.query}")
+# Endpoint to run agent and get a single JSON response (simulating /run)
+@app.post("/run/{agent_name}", response_model=AgentRunResponse, summary="Run an agent and get all events")
+async def run_agent_api(
+    agent_name: str,
+    query_data: AgentQuery
+):
+    """Executes an agent and returns all generated events in a single JSON array."""
+    
+    if agent_name not in AGENT_REGISTRY:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found.")
+
+    agent_builder = AGENT_REGISTRY[agent_name]
+
+    print(f"API ({agent_name}): Received query: {query_data.query}")
     try:
-        agent = build_travel_agent()
-        context = agent.execute(req.query)
+        agent = agent_builder()
+        runner = Runner(agent=agent, app_name="travel_imagination_app")       
         
-        # Check for errors in context
-        if context.get("error"):
-             raise HTTPException(status_code=500, detail=context.get("error"))
-             
-        return {
-            "status": "success",
-            "history": context.history,
-            "final_data": {
-                "place": context.get("place_data"),
-                "draft": context.get("current_draft"),
-                "image_url": context.get("image_url"),
-                "judge_verdict": context.get("judge_result")
-            }
-        }
+        # Collect all events in a list
+        collected_events = []
+        error_message = None
+        final_state = {}
+        
+        session_id = query_data.session_id or str(uuid.uuid4())
+        
+        # Explicitly create the session
+        await runner.session_service.create_session(user_id=query_data.user_id, session_id=session_id, app_name="travel_imagination_app")
+
+        new_message = types.Content(role="user", parts=[types.Part.from_text(text=query_data.query)])
+
+        # The runner.run method is expected to return a Context object with final state.
+        # We need to collect all events from the generator.
+        async_events_generator = runner.run_async(
+            user_id=query_data.user_id,
+            session_id=session_id,
+            new_message=new_message,
+            state_delta={"initial_input": query_data.query}
+        )
+        
+        # Iterate through the events and collect them
+        try:
+            async for event in async_events_generator:
+                # Capture state updates
+                if event.actions and event.actions.state_delta:
+                    final_state.update(event.actions.state_delta)
+                
+                # Convert event to a serializable dict for history
+                # event.model_dump() is available on Pydantic models
+                event_dict = event.model_dump()
+                # Ensure complex types are serializable if needed (usually pydantic handles it)
+                collected_events.append(event_dict)
+
+                if event.error_message:
+                    error_message = event.error_message
+
+        except Exception as agent_ex:
+            error_message = f"Agent execution failed: {str(agent_ex)}"
+
+        if error_message:
+            # If an error occurred during agent execution, return an error response
+            return AgentRunResponse(status="error", message=error_message)
+
+        # If the agent completed successfully, return the collected events
+        return AgentRunResponse(status="success", final_data=final_state, history=collected_events)
+        
+    except ImportError as e:
+        print(f"API Import Error ({agent_name}): {e}. Make sure ADK components are correctly installed.")
+        raise HTTPException(status_code=500, detail=f"Import Error: {e}. Please check backend setup.")
     except Exception as e:
-        print(f"Server Error: {e}")
+        print(f"API Runtime Error ({agent_name}): {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Mount static files (Frontend)
-# We mount this last so that API routes take precedence
-if os.path.exists("static"):
-    app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
+# --- Static File Serving ---
+# Mount static files (Frontend build output)
+# This should be mounted last so that API routes take precedence.
+# We assume the frontend build output is in a 'static' directory relative to the backend.
+# If frontend is in 'frontend/dist', the path needs adjustment.
+# Based on project structure, it's frontend/dist.
+
+static_dir_path = "static"
+frontend_dist_path = "../frontend/dist"
+
+if os.path.exists(frontend_dist_path):
+    static_dir_path = frontend_dist_path
+    print(f"Mounting frontend static files from: {static_dir_path}")
+    app.mount("/", StaticFiles(directory=static_dir_path, html=True), name="static")
+else:
+    print(f"Warning: Frontend distribution directory '{frontend_dist_path}' not found. Static file serving might not work.")
+
+# --- Main Entry Point ---
 if __name__ == "__main__":
     import uvicorn
-    # Use PORT env var if available (Cloud Run), else 8000
+    # Use PORT env var if available (Cloud Run), else default to 8000
     port = int(os.environ.get("PORT", 8000))
+    print(f"Starting Uvicorn server on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)

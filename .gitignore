@@ -1,12 +1,19 @@
 # Python
 __pycache__/
 *.pyc
+
+# Logs
 *.log
+**/*.log
+
 .env
 
 # Node.js
 node_modules/
 dist/
+
+# Generated images
+frontend/public/generated_images/
 
 # macOS
 .DS_Store

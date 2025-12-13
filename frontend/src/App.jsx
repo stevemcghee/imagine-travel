@@ -16,18 +16,52 @@ const getWsUrl = (url) => {
   try {
     const urlObj = new URL(url);
     urlObj.protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
-    urlObj.pathname = '/ws/run_agent';
+    urlObj.pathname = '/ws/run_agent/travel_agent';
     return urlObj.toString();
   } catch (e) {
-    return 'ws://localhost:8000/ws/run_agent';
+    return 'ws://localhost:8000/ws/run_agent/travel_agent';
   }
 }
+
+// Helper to safely get the map URL regardless of casing and structure
+const getMapUrl = (placeData) => {
+    if (!placeData) return null;
+
+    // Prioritize name/address for map query
+    const name = placeData.place_name || placeData.name;
+    const address = placeData.address;
+    if (name || address) {
+        const q = [name, address].filter(Boolean).join(" ");
+        return `https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=15&output=embed`;
+    }
+    
+    // Fallback to coordinates for precise location if name/address not available
+    if (placeData.location?.latitude && placeData.location?.longitude) {
+        return `https://maps.google.com/maps?q=${placeData.location.latitude},${placeData.location.longitude}&z=15&output=embed`;
+    }
+    
+    return null;
+}
+
+// Helper to get place name safely
+const getPlaceName = (placeData) => {
+    if (!placeData) return null;
+    return placeData.place_name || placeData.name || placeData.place;
+}
+
 
 function App() {
   const [query, setQuery] = useState('')
   const [hasStarted, setHasStarted] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [results, setResults] = useState(null)
+  
+  // Separate states for progressive rendering
+  const [placeData, setPlaceData] = useState(null)
+  const [historyData, setHistoryData] = useState(null) // Unused in UI, but good for debug
+  const [currentDraft, setCurrentDraft] = useState(null)
+  const [imageUrl, setImageUrl] = useState(null)
+  const [judgeResult, setJudgeResult] = useState(null) // Renamed from judge_verdict
+
   const [error, setError] = useState(null)
   const [logs, setLogs] = useState([])
   const wsRef = useRef(null)
@@ -38,7 +72,13 @@ function App() {
 
     setHasStarted(true)
     setLoading(true)
-    setResults(null)
+    
+    // Reset all results-related states
+    setPlaceData(null)
+    setHistoryData(null)
+    setCurrentDraft(null)
+    setImageUrl(null)
+    setJudgeResult(null)
     setError(null)
     setLogs([])
 
@@ -52,6 +92,8 @@ function App() {
     wsRef.current = ws
 
     ws.onopen = () => {
+      setLogs(prev => [...prev, `[Frontend]: Sending query: "${query}"`])
+      console.log(`[Frontend]: Sending query: "${query}"`);
       ws.send(JSON.stringify({ query }))
     }
 
@@ -61,21 +103,63 @@ function App() {
         
         if (data.type === 'log') {
           setLogs(prev => [...prev, data.message])
-        } else if (data.type === 'result') {
-          setResults(data.data.final_data)
+          setError(null); // Clear error on new log activity
+        } else if (data.type === 'state_update') { // Handle incremental state updates
+            setError(null); // Clear error on state update
+            const stateDelta = data.data;
+
+            if (stateDelta.place_data) {
+                let parsedPlaceData = stateDelta.place_data;
+                if (typeof parsedPlaceData === 'string') {
+                    try {
+                        const cleanJson = parsedPlaceData.replace(/```json/g, '').replace(/```/g, '').replace(/\'/g, "'").trim();
+                        parsedPlaceData = JSON.parse(cleanJson);
+                        console.log("Parsed place_data object (from state_update):", parsedPlaceData);
+                    } catch (e) {
+                        console.error("Failed to parse place_data JSON (from state_update):", e);
+                    }
+                }
+                setPlaceData(parsedPlaceData);
+            }
+            if (stateDelta.history_data) {
+                setHistoryData(stateDelta.history_data);
+            }
+            if (stateDelta.current_draft) {
+                setCurrentDraft(stateDelta.current_draft);
+            }
+            if (stateDelta.image_url) {
+                setImageUrl(stateDelta.image_url);
+            }
+            if (stateDelta.judge_result) {
+                let parsedJudgeResult = stateDelta.judge_result;
+                 if (typeof parsedJudgeResult === 'string') {
+                    try {
+                        const cleanJson = parsedJudgeResult.replace(/```json/g, '').replace(/```/g, '').trim();
+                        parsedJudgeResult = JSON.parse(cleanJson);
+                    } catch (e) {
+                        console.error("Failed to parse judge_result JSON (from state_update):", e);
+                    }
+                }
+                setJudgeResult(parsedJudgeResult);
+            }
+
+        } else if (data.type === 'result') { // Final result, mostly for loading state
           setLoading(false)
+          setError(null); // Clear error on final result
           ws.close()
         } else if (data.type === 'error') {
           setError(data.message)
           setLoading(false)
         }
       } catch (err) {
-        console.error("WS Parse Error", err)
+        console.error("WS Parse Error"), err
+        setError("Failed to parse backend message.")
+        setLoading(false)
       }
     }
 
     ws.onerror = (err) => {
-      console.error("WS Error", err)
+      console.error("WS Error"), err
       setError("Connection failed. Ensure the backend is running.")
       setLoading(false)
     }
@@ -84,13 +168,22 @@ function App() {
   const handleReset = () => {
     setHasStarted(false)
     setQuery('')
-    setResults(null)
+    setPlaceData(null)
+    setHistoryData(null)
+    setCurrentDraft(null)
+    setImageUrl(null)
+    setJudgeResult(null)
+    setError(null)
     setLogs([])
   }
 
   const fillPrompt = (prompt) => {
     setQuery(prompt)
   }
+
+  // Determine if any results are available to show the results view
+  const hasResults = placeData || currentDraft || imageUrl || judgeResult;
+
 
   // Initial Landing View
   if (!hasStarted) {
@@ -158,24 +251,24 @@ function App() {
 
       {/* Hero Map */}
       <div className="w-full h-96 bg-gray-200 shadow-lg">
-        {loading && !results?.place ? (
+        {loading && !placeData ? ( // Use placeData here
             <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-400 text-xl animate-pulse">
                 <MapIcon size={48} className="mr-4" /> Finding location...
             </div>
-        ) : results?.place ? (
+        ) : placeData ? ( // Use placeData here
              <iframe
                 width="100%"
                 height="100%"
                 style={{ border: 0 }}
                 loading="lazy"
                 allowFullScreen
-                src={`https://maps.google.com/maps?q=${encodeURIComponent(results.place.name + " " + results.place.address)}&t=&z=13&ie=UTF8&iwloc=&output=embed`}
+                src={getMapUrl(placeData)} // Use placeData here
             ></iframe>
         ) : null}
       </div>
 
       <div className="max-w-5xl mx-auto p-8 bg-white shadow-lg rounded-lg -mt-16 relative z-10">
-        {loading && !results && (
+        {loading && !hasResults && ( // Use hasResults here
              <div className="flex flex-col items-center justify-center py-20">
                 <Loader2 size={64} className="text-gray-400 animate-spin mb-4" />
                 <p className="text-2xl text-gray-500 animate-pulse">Writing your story...</p>
@@ -189,53 +282,57 @@ function App() {
             </div>
         )}
 
-        {results && (
+        {hasResults && ( // Use hasResults here
             <div className="mt-8 max-w-2xl mx-auto">
                 {/* Journal Entry Text Card */}
-                <div className="mb-8 bg-white p-8 shadow-xl border border-gray-200 relative min-h-[400px]">
-                    <h3 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2 justify-center">
-                        <Sparkles className="text-indigo-500" /> Journal Entry
-                    </h3>
-                    <div className="text-lg text-gray-800 leading-loose font-serif mb-8">
-                         {results.draft.split('\n').map((line, i) => (
-                            <p key={i} className="mb-4">{line}</p>
-                         ))}
-                    </div>
-                    {results.place && (
-                        <div className="pt-6 border-t-2 border-dotted border-gray-300 text-center">
-                             <p className="text-xs text-gray-400 uppercase tracking-widest">Location</p>
-                             <p className="font-mono text-sm text-gray-600 mt-1">{results.place.address}</p>
-                        </div>
-                    )}
-                </div>
+                {currentDraft && ( // Render only if currentDraft exists
+                  <div className="mb-8 bg-white p-8 shadow-xl border border-gray-200 relative min-h-[400px]">
+                      <h3 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2 justify-center">
+                          <Sparkles className="text-indigo-500" /> Journal Entry
+                      </h3>
+                      <div className="text-lg text-gray-800 leading-loose font-serif mb-8">
+                          {currentDraft.split('\n').map((line, i) => (
+                              <p key={i} className="mb-4">{line}</p>
+                          ))}
+                      </div>
+                      {placeData && ( // Use placeData here
+                          <div className="pt-6 border-t-2 border-dotted border-gray-300 text-center">
+                               <p className="text-xs text-gray-400 uppercase tracking-widest">Location</p>
+                               <p className="font-mono text-sm text-gray-600 mt-1">{placeData.address || "Address unavailable"}</p>
+                          </div>
+                      )}
+                  </div>
+                )}
 
                 {/* Generated Image Card */}
-                <div className="mb-8 bg-white p-4 shadow-xl border border-gray-200">
-                    <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2 justify-center">
-                        <Camera className="text-purple-500" /> Visual Memory
-                    </h3>
-                    <div className="bg-gray-100 w-full aspect-square flex items-center justify-center overflow-hidden border border-gray-200">
-                         {results.image_url ? (
-                            <img src={results.image_url} alt="Travel Memory" className="w-full h-full object-cover" />
-                         ) : (
-                            <Camera size={48} className="text-gray-300" />
-                         )}
-                    </div>
-                    <p className="mt-4 text-center text-sm text-gray-500 italic">{results.place?.name}</p>
-                </div>
+                {imageUrl && ( // Render only if imageUrl exists
+                  <div className="mb-8 bg-white p-4 shadow-xl border border-gray-200">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2 justify-center">
+                          <Camera className="text-purple-500" /> Visual Memory
+                      </h3>
+                      <div className="bg-gray-100 w-full aspect-square flex items-center justify-center overflow-hidden border border-gray-200">
+                           {imageUrl ? (
+                              <img src={imageUrl} alt="Travel Memory" className="w-full h-full object-cover" />
+                           ) : (
+                              <Camera size={48} className="text-gray-300" />
+                           )}
+                      </div>
+                      <p className="mt-4 text-center text-sm text-gray-500 italic">{getPlaceName(placeData)}</p> {/* Use placeData here */}
+                  </div>
+                )}
 
                 {/* Fact Check Card (smaller text) */}
-                {results.judge_verdict && (
-                    <div className={`p-4 border rounded-lg text-sm ${results.judge_verdict.pass ? 'border-green-400 bg-green-50' : 'border-red-300 bg-red-50'}`}>
+                {judgeResult && ( // Render only if judgeResult exists
+                    <div className={`p-4 border rounded-lg text-sm ${judgeResult.pass ? 'border-green-400 bg-green-50' : 'border-red-300 bg-red-50'}`}>
                         <div className="flex items-center justify-center gap-2 mb-2">
-                            <Stamp size={16} className={results.judge_verdict.pass ? 'text-green-600' : 'text-red-500'} />
+                            <Stamp size={16} className={judgeResult.pass ? 'text-green-600' : 'text-red-500'} />
                             <h3 className="font-semibold uppercase tracking-wide text-xs text-gray-700">Fact Check Verdict</h3>
                         </div>
                         <p className="text-center text-gray-800 italic text-xs leading-tight">
-                            "{results.judge_verdict.reason}"
+                            "{judgeResult.reason}"
                         </p>
                         <div className="mt-2 text-center text-sm opacity-60">
-                            Score: {results.judge_verdict.score}/10
+                            Score: {judgeResult.score}/10
                         </div>
                     </div>
                 )}
@@ -244,7 +341,7 @@ function App() {
       </div>
 
       {/* Global Log Pane */}
-      {(loading || results || logs.length > 0) && (
+      {(loading || hasResults || logs.length > 0) && (
         <LogPane logs={logs} />
       )}
     </div>
