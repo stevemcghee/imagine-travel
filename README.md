@@ -120,6 +120,14 @@ The frontend will typically run on `http://localhost:3000` (or 3001/5173 if 3000
 
 5.  View the final result: A journal entry, an interactive map, a generated image, and a fact-check verdict.
 
+### Screenshots
+
+#### Landing Page
+![Landing Page](images/front-page.png)
+
+#### Results Page
+![Results Page](images/results-page.png)
+
 ## Deployment (Google Cloud Run)
 
 This application is containerized and ready to be deployed to **Google Cloud Run** as a single service (Frontend + Backend).
