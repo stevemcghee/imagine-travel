@@ -17,3 +17,5 @@ opentelemetry-instrumentation
 opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-requests
 opentelemetry-instrumentation-google-genai
+opentelemetry-exporter-gcp-logging
+opentelemetry-exporter-gcp-monitoring

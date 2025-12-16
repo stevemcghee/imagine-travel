@@ -38,16 +38,25 @@ def init_telemetry(app, service_name="travel-agent-adk"):
     trace.set_tracer_provider(provider)
 
     # 4. Configure Exporter
-    # Default to OTLP (Collector)
-    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
-    
-    try:
-        otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
-        span_processor = BatchSpanProcessor(otlp_exporter)
-        provider.add_span_processor(span_processor)
-        logger.info(f"OTLP Exporter configured to {otlp_endpoint}")
-    except Exception as e:
-        logger.error(f"Failed to configure OTLP exporter: {e}")
+    # Default to OTLP (Collector) unless USE_GCP_EXPORTER is set to true
+    if os.getenv("USE_GCP_EXPORTER", "false").lower() == "true":
+        try:
+            from opentelemetry.exporter.google_cloud import GoogleCloudSpanExporter
+            gcp_exporter = GoogleCloudSpanExporter()
+            span_processor = BatchSpanProcessor(gcp_exporter)
+            provider.add_span_processor(span_processor)
+            logger.info("Google Cloud Trace Exporter configured.")
+        except Exception as e:
+            logger.error(f"Failed to configure Google Cloud Trace exporter: {e}")
+    else:
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+        try:
+            otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
+            span_processor = BatchSpanProcessor(otlp_exporter)
+            provider.add_span_processor(span_processor)
+            logger.info(f"OTLP Exporter configured to {otlp_endpoint}")
+        except Exception as e:
+            logger.error(f"Failed to configure OTLP exporter: {e}")
 
     # Optional: Console Exporter for debugging (enable with env var)
     if os.getenv("OTEL_CONSOLE_EXPORTER", "false").lower() == "true":
