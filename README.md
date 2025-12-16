@@ -29,7 +29,6 @@ This application integrates **3 distinct external APIs**:
 ## Project Structure
 
 -   `backend/`: Python FastAPI backend.
-    -   `adk/`: **Agent Development Kit**. A lightweight framework for building sequential and looping agent workflows.
     -   `agents/`: Contains the specific agent logic (`travel_imagination.py`) and tool integrations (`tools.py`).
     -   `server.py`: The FastAPI server handling WebSocket connections and agent execution.
 -   `frontend/`: React/Vite frontend.
