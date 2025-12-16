@@ -4,7 +4,6 @@ import logging
 import os
 import wikipedia
 from dotenv import load_dotenv
-from opentelemetry import trace
 
 from google.adk.agents import LoopAgent, LlmAgent, SequentialAgent
 from google.adk.tools.tool_context import ToolContext
@@ -17,32 +16,6 @@ from fastapi.openapi.models import APIKey, APIKeyIn
 from . import tools
 from . import config
 
-# --- Constants ---
-APP_NAME = "travel_imagination_app"
-MODEL = config.GENAI_MODEL
-
-# State Keys
-STATE_LOCATION = "place_data"
-STATE_HISTORY = "history_data"
-STATE_CURRENT_DOC = "current_draft"
-STATE_CRITICISM = "draft_feedback"
-STATE_IMAGE_URL = "image_output" # Tool output will be stored here
-STATE_JUDGE_RESULT = "judge_result"
-
-COMPLETION_PHRASE = "COMPLETE"
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-# Load environment variables from .env file in the project root.
-# Ensure MAPS_API_KEY is set in your project's root .env file.
-load_dotenv()
-
-# Setup Tracer
-tracer = trace.get_tracer(__name__)
-
-# --- Tools Setup ---
-maps_toolset = tools.get_maps_mcp_toolset()
-generate_images = tools.generate_images
 
 def exit_loop(tool_context: ToolContext):
     """Call this function ONLY when the critique indicates no further changes are needed, signaling the iterative process should end."""
@@ -51,7 +24,6 @@ def exit_loop(tool_context: ToolContext):
     tool_context.state["refinement_complete"] = True  # Explicitly set a flag in state
     return {}
 
-@tracer.start_as_current_span("research_location_tool")
 def research_location(location: str) -> str:
     """Fetch a brief summary about the location from Wikipedia.
     
@@ -246,6 +218,5 @@ root_agent = SequentialAgent(
     description="An agent pipeline that grounds travel imagination in real locations, drafts an initial story, iteratively refines it, and generates images."
 )
 
-@tracer.start_as_current_span("build_travel_agent")
 def build_travel_agent():
     return root_agent

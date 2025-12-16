@@ -20,13 +20,6 @@ import json
 import inspect
 from google.genai import types
 
-# Import Telemetry
-try:
-    from otel_setup import init_telemetry
-except ImportError:
-    print("Warning: Could not import otel_setup. Telemetry will be disabled.")
-    def init_telemetry(app, service_name): pass
-
 # Import ADK components
 try:
     # Reverting to the 'google.adk' namespace based on initial agent code structure
@@ -55,9 +48,6 @@ app = FastAPI(
     description="API server for ADK agents",
     version="1.0.0",
 )
-
-# Initialize Telemetry
-init_telemetry(app, service_name="travel-imagination-agent")
 
 app.add_middleware(
     CORSMiddleware,

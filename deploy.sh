@@ -11,7 +11,7 @@ gcloud run deploy imagine-travel \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars FRONTEND_STATIC_PATH=/app/static,USE_GCP_EXPORTER=true
+  --set-env-vars FRONTEND_STATIC_PATH=/app/static,USE_GCP_EXPORTER=true,OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true,OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true,ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS=false
 
 #echo "Setting IAM policy to allow public access..."
 #gcloud beta run services add-iam-policy-binding imagine-travel \
