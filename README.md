@@ -52,6 +52,7 @@ Create a `.env` file in the `backend/` directory (you can copy `.env.template` i
 ```bash
 # Example content for backend/.env
 GOOGLE_MAPS_API_KEY=your_google_maps_key
+VITE_GOOGLE_MAPS_API_KEY=your_frontend_maps_key
 GOOGLE_API_KEY=your_gemini_api_key
 # VITE_API_BASE_URL is set by Cloud Run or defaults to localhost for dev
 ```
