@@ -160,3 +160,41 @@ This application is containerized and ready to be deployed to **Google Cloud Run
 
 2.  **Access the App**:
     The command output will provide a Service URL (e.g., `https://imagine-travel-xyz-uc.a.run.app`). Open this URL in your browser.
+
+## Observability (OpenTelemetry)
+
+This project has been instrumented with **OpenTelemetry** to provide comprehensive tracing and observability for the agent's execution, including LLM calls, tool usage, and network interactions.
+
+### Features
+*   **Auto-Instrumentation**: FastAPI, Requests, HTTPX, and Google GenAI libraries are automatically traced.
+*   **Manual Instrumentation**: Key custom logic, such as the `generate_images` tool (Vertex AI + GCS) and `research_location` (Wikipedia), has been manually instrumented with custom spans for granular visibility.
+*   **Dual Export Modes**:
+    *   **Local Development**: Exports traces to a local OpenTelemetry Collector (via OTLP), which can then forward to console or other backends.
+    *   **Cloud Run**: Supports direct export to **Google Cloud Trace** without a sidecar collector.
+
+### Configuration
+
+The observability setup is managed in `backend/otel_setup.py`.
+
+**Environment Variables:**
+*   `ENABLE_TELEMETRY`: Set to `false` to disable telemetry entirely (default: `true`).
+*   `USE_GCP_EXPORTER`: Set to `true` to enable direct export to Google Cloud Trace (recommended for Cloud Run).
+*   `OTEL_CONSOLE_EXPORTER`: Set to `true` to print traces to the console (useful for debugging).
+
+### Running Locally with Telemetry
+
+1.  **Start the Collector**:
+    Use the provided helper script to run a local OpenTelemetry Collector (requires Docker). This configures the collector to export to Google Cloud (using your local credentials) and the console.
+    ```bash
+    ./run_local_collector.sh
+    ```
+
+2.  **Run the Backend**:
+    ```bash
+    ./run_backend.sh
+    ```
+
+### Documentation References
+*   [OpenTelemetry Python Documentation](https://opentelemetry.io/docs/languages/python/)
+*   [Google Cloud Trace with OpenTelemetry](https://cloud.google.com/trace/docs/setup/python-ot)
+*   [Instrumenting AI Agents (Google Cloud)](https://docs.cloud.google.com/stackdriver/docs/instrumentation/ai-agent-adk)
