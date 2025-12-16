@@ -128,6 +128,7 @@ function App() {
                 setCurrentDraft(stateDelta.current_draft);
             }
             if (stateDelta.image_url) {
+                console.log("Frontend received incremental image_url:", stateDelta.image_url);
                 setImageUrl(stateDelta.image_url);
             }
             if (stateDelta.judge_result) {
@@ -143,9 +144,45 @@ function App() {
                 setJudgeResult(parsedJudgeResult);
             }
 
-        } else if (data.type === 'result') { // Final result, mostly for loading state
+        } else if (data.type === 'result') { // Final result
           setLoading(false)
           setError(null); // Clear error on final result
+          
+          if (data.data && data.data.final_data) {
+              const finalState = data.data.final_data;
+              console.log("Processing final state:", finalState);
+
+              if (finalState.place_data) {
+                  let parsedPlaceData = finalState.place_data;
+                  if (typeof parsedPlaceData === 'string') {
+                      try {
+                          const cleanJson = parsedPlaceData.replace(/```json/g, '').replace(/```/g, '').replace(/\'/g, "'").trim();
+                          parsedPlaceData = JSON.parse(cleanJson);
+                      } catch (e) {
+                          console.error("Failed to parse place_data JSON (final):", e);
+                      }
+                  }
+                  setPlaceData(parsedPlaceData);
+              }
+              if (finalState.history_data) setHistoryData(finalState.history_data);
+              if (finalState.current_draft) setCurrentDraft(finalState.current_draft);
+              if (finalState.image_url) {
+                  console.log("Frontend received final image_url:", finalState.image_url);
+                  setImageUrl(finalState.image_url);
+              }
+              if (finalState.judge_result) {
+                  let parsedJudgeResult = finalState.judge_result;
+                   if (typeof parsedJudgeResult === 'string') {
+                      try {
+                          const cleanJson = parsedJudgeResult.replace(/```json/g, '').replace(/```/g, '').trim();
+                          parsedJudgeResult = JSON.parse(cleanJson);
+                      } catch (e) {
+                          console.error("Failed to parse judge_result JSON (final):", e);
+                      }
+                  }
+                  setJudgeResult(parsedJudgeResult);
+              }
+          }
           ws.close()
         } else if (data.type === 'error') {
           setError(data.message)
@@ -191,7 +228,7 @@ function App() {
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
         <div className="max-w-6xl w-full text-center">
           <h1 className="text-6xl md:text-9xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-10 drop-shadow-sm pb-4 tracking-tighter">
-            Travel Memory Architect
+            Imagine Travel
           </h1>
           <p className="text-3xl text-gray-500 mb-16 font-light tracking-wide">
             Where have you been? Let's write the story.
@@ -246,7 +283,7 @@ function App() {
         >
           <ArrowLeft size={20} /> New Journey
         </button>
-        <h2 className="text-2xl font-bold text-gray-800">My Travel Journal</h2>
+        <h2 className="text-2xl font-bold text-gray-800">Imagine Travel Journal</h2>
       </div>
 
       {/* Hero Map */}
@@ -283,10 +320,11 @@ function App() {
         )}
 
         {hasResults && ( // Use hasResults here
-            <div className="mt-8 max-w-2xl mx-auto">
+            <div className="mt-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {/* Journal Entry Text Card */}
                 {currentDraft && ( // Render only if currentDraft exists
-                  <div className="mb-8 bg-white p-8 shadow-xl border border-gray-200 relative min-h-[400px]">
+                  <div className="bg-white p-8 shadow-xl border border-gray-200 relative min-h-[400px]">
                       <h3 className="text-3xl font-bold text-gray-800 mb-6 flex items-center gap-2 justify-center">
                           <Sparkles className="text-indigo-500" /> Journal Entry
                       </h3>
@@ -306,7 +344,7 @@ function App() {
 
                 {/* Generated Image Card */}
                 {imageUrl && ( // Render only if imageUrl exists
-                  <div className="mb-8 bg-white p-4 shadow-xl border border-gray-200">
+                  <div className="bg-white p-4 shadow-xl border border-gray-200">
                       <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2 justify-center">
                           <Camera className="text-purple-500" /> Visual Memory
                       </h3>
@@ -320,10 +358,11 @@ function App() {
                       <p className="mt-4 text-center text-sm text-gray-500 italic">{getPlaceName(placeData)}</p> {/* Use placeData here */}
                   </div>
                 )}
+              </div>
 
                 {/* Fact Check Card (smaller text) */}
                 {judgeResult && ( // Render only if judgeResult exists
-                    <div className={`p-4 border rounded-lg text-sm ${judgeResult.pass ? 'border-green-400 bg-green-50' : 'border-red-300 bg-red-50'}`}>
+                    <div className={`mt-8 p-4 border rounded-lg text-sm ${judgeResult.pass ? 'border-green-400 bg-green-50' : 'border-red-300 bg-red-50'}`}>
                         <div className="flex items-center justify-center gap-2 mb-2">
                             <Stamp size={16} className={judgeResult.pass ? 'text-green-600' : 'text-red-500'} />
                             <h3 className="font-semibold uppercase tracking-wide text-xs text-gray-700">Fact Check Verdict</h3>

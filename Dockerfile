@@ -26,6 +26,7 @@ COPY --from=frontend-builder /app/frontend/dist ./static
 
 # Expose port (Cloud Run sets PORT env var, defaulting to 8080)
 ENV PORT=8080
+ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
-CMD uvicorn backend.server:app --host 0.0.0.0 --port $PORT
+CMD uvicorn server:app --host 0.0.0.0 --port $PORT

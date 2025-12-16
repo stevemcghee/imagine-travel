@@ -107,6 +107,7 @@ fact_finder = LlmAgent(
 drafter = LlmAgent(
     name="InitialWriter",
     model=MODEL,
+    generate_content_config={"temperature": 1.0},
     instruction=f"""
     You are a Travel Writer.
     
@@ -157,6 +158,7 @@ critic = LlmAgent(
 refiner = LlmAgent(
     name="Refiner",
     model=MODEL,
+    generate_content_config={"temperature": 1.0},
     instruction=f"""
     You are a Creative Writing Assistant.
     
@@ -188,9 +190,8 @@ refinement_loop = LoopAgent(
 # STEP 5: Visualization (Image Gen)
 image_generation_agent = LlmAgent(
     name="ImageGenerator",
-    model=config.IMAGEN_MODEL, # Using imagen model config if appropriate for the agent invoking the tool? Or use GENAI_MODEL for the agent that calls the tool?
-    # The agent *invoking* the tool uses a text model (Gemini). The tool uses Imagen.
-    # So we should use MODEL (Gemini) here.
+    model=MODEL,
+    # output_key=STATE_IMAGE_URL # Removed as tool directly updates state["image_url"]
     instruction=f"""
     You are an Artist.
     
@@ -199,13 +200,10 @@ image_generation_agent = LlmAgent(
     Your Goal:
     1. Create a descriptive prompt for a polaroid-style photo that represents this story.
     2. The prompt should specify "polaroid style" and "no text".
-    3. Call the 'generate_images' tool with this prompt, ensuring the prompt is simple, e.g., "A simple abstract image, polaroid style, no text."
+    3. Call the 'generate_images' tool with this prompt, ensuring the prompt is simple, e.g., "A simple abstract image of coffee in Paris, polaroid style, no text."
     """,
-    tools=[generate_images],
-    output_key=STATE_IMAGE_URL
-)
-# Correction: The agent needs a text model to process the instruction and call the tool.
-image_generation_agent.model = MODEL 
+    tools=[generate_images]
+) 
 
 # STEP 6: Evaluation (Judge)
 judge_agent = LlmAgent(
@@ -217,7 +215,7 @@ judge_agent = LlmAgent(
     **User Query:** {{initial_input}}
     **Original Data:** {{{STATE_LOCATION}}}
     **Journal Entry:** {{{STATE_CURRENT_DOC}}}
-    **Generated Image Info:** {{{STATE_IMAGE_URL}}}
+    **Generated Image Info:** {{image_url}}
     
     Evaluate:
     1. Does the story accurately reflect the location's address/name?

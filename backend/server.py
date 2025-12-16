@@ -1,11 +1,16 @@
 import os
 import asyncio
 import uuid
+import logging
 from dotenv import load_dotenv
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
-print("Loaded environment variables.")
+logger.info("Loaded environment variables.")
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,7 +33,7 @@ except ImportError as e:
 
 # Import agent builders
 # Assuming agents are in a directory and have a build_<agent_name> function
-from .agents.travel_imagination import build_travel_agent as build_travel_agent_adk
+from agents.travel_imagination import build_travel_agent as build_travel_agent_adk
 # Add other agents here if they exist
 
 # Agent registry
@@ -102,7 +107,7 @@ async def websocket_endpoint(
         agent = agent_builder()
         runner = Runner(agent=agent, app_name="travel_imagination_app")       
         
-        print(f"WS ({agent_name}): Starting agent execution with query: {query_input}")
+        logger.info(f"WS ({agent_name}): Starting agent execution with query: {query_input}")
 
         # Explicitly create the session
         await runner.session_service.create_session(user_id=user_id, session_id=session_id, app_name="travel_imagination_app")
@@ -119,12 +124,17 @@ async def websocket_endpoint(
             if event.actions and event.actions.state_delta:
                 state_delta = event.actions.state_delta
                 final_state.update(state_delta)
-                print(f"WS ({agent_name}) State Update: {state_delta.keys()}")
+                logger.info(f"WS ({agent_name}) State Update: {state_delta.keys()}")
                 await websocket.send_json({"type": "state_update", "data": state_delta})
             
             # 2. Handle Errors
             if event.error_message:
-                print(f"WS ({agent_name}) Sending Error: {event.error_message}")
+                # Specific check for benign error during loop termination
+                if event.error_message == "Unknown error." and final_state.get("refinement_complete"):
+                    logger.info(f"WS ({agent_name}) Ignoring expected loop termination signal ('Unknown error.').")
+                    continue
+
+                logger.error(f"WS ({agent_name}) Sending Error: {event.error_message}")
                 await websocket.send_json({"type": "error", "message": event.error_message})
                 # Don't break immediately, maybe other events have info, but typically error ends it.
             
@@ -152,25 +162,29 @@ async def websocket_endpoint(
                          await websocket.send_json({"type": "log", "message": f"[{sender}]: Calling tool '{func_name}' with args: {func_args}..."})
 
         # 4. Send Final Result
-        print(f"WS ({agent_name}): Agent execution finished. Sending result.")
+        logger.info(f"WS ({agent_name}): Agent execution finished. Sending result.")
         
         # Retrieve full session state to ensure nothing was missed
         try:
             session = await runner.session_service.get_session(session_id=session_id, user_id=user_id, app_name="travel_imagination_app")
             if session and session.state:
-                print(f"WS ({agent_name}) Full Session State Keys: {session.state.keys()}")
+                logger.info(f"WS ({agent_name}) Full Session State Keys: {session.state.keys()}")
+                if "image_url" in session.state:
+                    logger.info(f"WS ({agent_name}) FOUND image_url in session state: {session.state['image_url']}")
+                else:
+                    logger.warning(f"WS ({agent_name}) WARNING: image_url NOT found in session state.")
                 final_state.update(session.state)
         except Exception as e_state:
-            print(f"WS ({agent_name}) Warning: Could not retrieve full session state: {e_state}")
+            logger.warning(f"WS ({agent_name}) Warning: Could not retrieve full session state: {e_state}")
 
-        print(f"WS ({agent_name}) FINAL PAYLOAD TO FRONTEND: {json.dumps(final_state, default=str)}")
+        logger.info(f"WS ({agent_name}) FINAL PAYLOAD TO FRONTEND: {json.dumps(final_state, default=str)}")
         await websocket.send_json({"type": "result", "data": {"final_data": final_state}})
             
     except WebSocketDisconnect:
-        print(f"WS ({agent_name}): Client disconnected")
+        logger.info(f"WS ({agent_name}): Client disconnected")
     except Exception as e:
         import traceback
-        print(f"WS ({agent_name}) Runtime Error: {e}")
+        logger.error(f"WS ({agent_name}) Runtime Error: {e}")
         traceback.print_exc() # Print full traceback
         try:
             await websocket.send_json({"type": "error", "message": f"An error occurred: {str(e)}"})
@@ -190,7 +204,7 @@ async def run_agent_api(
 
     agent_builder = AGENT_REGISTRY[agent_name]
 
-    print(f"API ({agent_name}): Received query: {query_data.query}")
+    logger.info(f"API ({agent_name}): Received query: {query_data.query}")
     try:
         agent = agent_builder()
         runner = Runner(agent=agent, app_name="travel_imagination_app")       
@@ -243,10 +257,10 @@ async def run_agent_api(
         return AgentRunResponse(status="success", final_data=final_state, history=collected_events)
         
     except ImportError as e:
-        print(f"API Import Error ({agent_name}): {e}. Make sure ADK components are correctly installed.")
+        logger.error(f"API Import Error ({agent_name}): {e}. Make sure ADK components are correctly installed.")
         raise HTTPException(status_code=500, detail=f"Import Error: {e}. Please check backend setup.")
     except Exception as e:
-        print(f"API Runtime Error ({agent_name}): {e}")
+        logger.error(f"API Runtime Error ({agent_name}): {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -257,20 +271,50 @@ async def run_agent_api(
 # If frontend is in 'frontend/dist', the path needs adjustment.
 # Based on project structure, it's frontend/dist.
 
-static_dir_path = "static"
-frontend_dist_path = "../frontend/dist"
+# Determine static directory path
+possible_paths = [
+    os.getenv("FRONTEND_STATIC_PATH"),
+    "frontend/dist",
+    "static",
+    "../frontend/dist" 
+]
 
-if os.path.exists(frontend_dist_path):
-    static_dir_path = frontend_dist_path
-    print(f"Mounting frontend static files from: {static_dir_path}")
-    app.mount("/", StaticFiles(directory=static_dir_path, html=True), name="static")
+static_dir_path = None
+for path in possible_paths:
+    if path and os.path.isdir(path):
+        static_dir_path = path
+        break
+
+if static_dir_path is None:
+    logger.warning(f"WARNING: Could not find frontend static files in any of: {possible_paths}. Frontend may not load.")
+    # Fallback to avoid crash, but frontend won't work
+    static_dir_path = "static" 
+    # Create it if it doesn't exist to prevent crash? 
+    # Better to just let it crash or warn? 
+    # Starlette will crash if we pass a non-existent dir.
+    # Let's create a dummy one if needed to keep the API alive? 
+    # No, better to fail fast or just not mount.
 else:
-    print(f"Warning: Frontend distribution directory '{frontend_dist_path}' not found. Static file serving might not work.")
+    logger.info(f"Mounting frontend static files from: {static_dir_path}")
 
 # --- Main Entry Point ---
 if __name__ == "__main__":
     import uvicorn
     # Use PORT env var if available (Cloud Run), else default to 8000
     port = int(os.environ.get("PORT", 8000))
-    print(f"Starting Uvicorn server on port {port}")
+    logger.info(f"Starting Uvicorn server on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+# Mount static files (Frontend build output)
+# Mount only if directory exists to avoid crash on startup
+if static_dir_path and os.path.isdir(static_dir_path):
+    # Explicitly mount generated images directory to avoid SPA fallback issues
+    generated_images_path = os.path.join(static_dir_path, "generated_images")
+    os.makedirs(generated_images_path, exist_ok=True)
+    logger.info(f"Mounting generated images from: {generated_images_path}")
+    app.mount("/generated_images", StaticFiles(directory=generated_images_path), name="generated_images")
+
+    # Mount root static files (SPA)
+    app.mount("/", StaticFiles(directory=static_dir_path, html=True), name="static")
+else:
+    logger.error("ERROR: Static files directory not found. '/' route will not serve frontend.")
