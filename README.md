@@ -136,8 +136,9 @@ This application is containerized and ready to be deployed to **Google Cloud Run
 
 1.  **Google Cloud Project**: You need an active GCP project.
 2.  **gcloud CLI**: Installed and authenticated (`gcloud auth login`, `gcloud config set project YOUR_PROJECT_ID`).
-3.  **APIs Enabled**: Cloud Run API, Cloud Build API, Artifact Registry API, **Vertex AI API** (for Imagen models), **Google Maps Platform (MCP) services**.
+3.  **APIs Enabled**: Cloud Run API, Cloud Build API, Artifact Registry API, **Vertex AI API** (for Imagen models), and the **Google Maps Platform (MCP) services**.
     ```bash
+    # Enable the Maps MCP service
     gcloud beta services enable mapstools.googleapis.com --project=$PROJECT_ID
     ```
 
