@@ -343,7 +343,7 @@ function App() {
                 )}
 
                 {/* Generated Image Card */}
-                {imageUrl && ( // Render only if imageUrl exists
+                {(imageUrl || (loading && currentDraft)) && (
                   <div className="bg-white p-4 shadow-xl border border-gray-200">
                       <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2 justify-center">
                           <Camera className="text-purple-500" /> Visual Memory
@@ -352,7 +352,10 @@ function App() {
                            {imageUrl ? (
                               <img src={imageUrl} alt="Travel Memory" className="w-full h-full object-cover" />
                            ) : (
-                              <Camera size={48} className="text-gray-300" />
+                              <div className="flex flex-col items-center text-gray-400 animate-pulse">
+                                  <Loader2 size={48} className="animate-spin mb-2" />
+                                  <span className="text-sm font-medium">Developing Photo...</span>
+                              </div>
                            )}
                       </div>
                       <p className="mt-4 text-center text-sm text-gray-500 italic">{getPlaceName(placeData)}</p> {/* Use placeData here */}
