@@ -11,7 +11,8 @@ from opentelemetry.instrumentation.google_genai import GoogleGenAIInstrumentor
 
 logger = logging.getLogger(__name__)
 
-def init_telemetry(app, service_name="travel-agent-adk"):
+def init_telemetry(app, service_name="default-agent"):
+
     """
     Initializes OpenTelemetry for the application.
     
