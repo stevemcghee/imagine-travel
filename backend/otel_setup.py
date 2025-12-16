@@ -7,6 +7,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.google_genai import GoogleGenAIInstrumentor
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,9 @@ def init_telemetry(app, service_name="default-agent"):
     
     # Instrument Requests (used by many libraries internally)
     RequestsInstrumentor().instrument(tracer_provider=provider)
+
+    # Instrument HTTPX (commonly used by async libraries like google-genai and likely MCP)
+    HTTPXClientInstrumentor().instrument(tracer_provider=provider)
     
     # Instrument Google GenAI (for LLM calls)
     # This captures prompt/response content if configured
