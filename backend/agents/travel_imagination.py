@@ -16,6 +16,29 @@ from fastapi.openapi.models import APIKey, APIKeyIn
 from . import tools
 from . import config
 
+# --- Constants ---
+APP_NAME = "travel_imagination_app"
+MODEL = config.GENAI_MODEL
+
+# State Keys
+STATE_LOCATION = "place_data"
+STATE_HISTORY = "history_data"
+STATE_CURRENT_DOC = "current_draft"
+STATE_CRITICISM = "draft_feedback"
+STATE_IMAGE_URL = "image_output" # Tool output will be stored here
+STATE_JUDGE_RESULT = "judge_result"
+
+COMPLETION_PHRASE = "COMPLETE"
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+# Load environment variables from .env file in the project root.
+# Ensure MAPS_API_KEY is set in your project's root .env file.
+load_dotenv()
+
+# --- Tools Setup ---
+maps_toolset = tools.get_maps_mcp_toolset()
+generate_images = tools.generate_images
 
 def exit_loop(tool_context: ToolContext):
     """Call this function ONLY when the critique indicates no further changes are needed, signaling the iterative process should end."""
