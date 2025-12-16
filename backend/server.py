@@ -20,6 +20,13 @@ import json
 import inspect
 from google.genai import types
 
+# Import Telemetry
+try:
+    from otel_setup import init_telemetry
+except ImportError:
+    print("Warning: Could not import otel_setup. Telemetry will be disabled.")
+    def init_telemetry(app, service_name): pass
+
 # Import ADK components
 try:
     # Reverting to the 'google.adk' namespace based on initial agent code structure
@@ -35,13 +42,6 @@ except ImportError as e:
 # Assuming agents are in a directory and have a build_<agent_name> function
 from agents.travel_imagination import build_travel_agent as build_travel_agent_adk
 # Add other agents here if they exist
-
-# Import Telemetry
-try:
-    from otel_setup import init_telemetry
-except ImportError:
-    print("Warning: Could not import otel_setup. Telemetry will be disabled.")
-    def init_telemetry(app, service_name): pass
 
 # Agent registry
 AGENT_REGISTRY = {
