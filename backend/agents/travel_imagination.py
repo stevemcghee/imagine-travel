@@ -4,6 +4,7 @@ import logging
 import os
 import wikipedia
 from dotenv import load_dotenv
+from opentelemetry import trace
 
 from google.adk.agents import LoopAgent, LlmAgent, SequentialAgent
 from google.adk.tools.tool_context import ToolContext
@@ -36,6 +37,9 @@ logging.basicConfig(level=logging.INFO)
 # Ensure MAPS_API_KEY is set in your project's root .env file.
 load_dotenv()
 
+# Setup Tracer
+tracer = trace.get_tracer(__name__)
+
 # --- Tools Setup ---
 maps_toolset = tools.get_maps_mcp_toolset()
 generate_images = tools.generate_images
@@ -47,6 +51,7 @@ def exit_loop(tool_context: ToolContext):
     tool_context.state["refinement_complete"] = True  # Explicitly set a flag in state
     return {}
 
+@tracer.start_as_current_span("research_location_tool")
 def research_location(location: str) -> str:
     """Fetch a brief summary about the location from Wikipedia.
     
@@ -241,5 +246,6 @@ root_agent = SequentialAgent(
     description="An agent pipeline that grounds travel imagination in real locations, drafts an initial story, iteratively refines it, and generates images."
 )
 
+@tracer.start_as_current_span("build_travel_agent")
 def build_travel_agent():
     return root_agent

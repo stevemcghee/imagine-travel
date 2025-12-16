@@ -8,10 +8,14 @@ from google.cloud import storage
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams 
 import google.auth
+from opentelemetry import trace
 from . import config
 
 # Setup logging
 logger = logging.getLogger(__name__)
+
+# Setup Tracer
+tracer = trace.get_tracer(__name__)
 
 MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY') or os.getenv('MAPS_API_KEY', 'no_api_found')
 MAPS_MCP_URL = "https://mapstools.googleapis.com/mcp" 
@@ -36,6 +40,7 @@ def get_maps_mcp_toolset():
     logger.info("MCP Toolset configured for Streamable HTTP connection.")
     return tools
 
+@tracer.start_as_current_span("generate_images_tool")
 async def generate_images(imagen_prompt: str, tool_context: ToolContext):
     logger.debug(f"FRONTEND_STATIC_PATH env var: {os.getenv('FRONTEND_STATIC_PATH')}")
     genai_client = genai.Client(
@@ -49,11 +54,14 @@ async def generate_images(imagen_prompt: str, tool_context: ToolContext):
             # Removed safety_filter_level due to allowlisting requirement/invalid value.
         )
         logger.debug(f"Sending Imagen config: {config_obj}")
-        response = genai_client.models.generate_images(
-            model=config.IMAGEN_MODEL,
-            prompt=imagen_prompt,
-            config=config_obj,
-        )
+        
+        with tracer.start_as_current_span("call_vertex_imagen"):
+            response = genai_client.models.generate_images(
+                model=config.IMAGEN_MODEL,
+                prompt=imagen_prompt,
+                config=config_obj,
+            )
+        
         logger.debug(f"config.GCS_BUCKET_NAME: {config.GCS_BUCKET_NAME} (type: {type(config.GCS_BUCKET_NAME)})")
         generated_image_paths = []
         if bool(config.GCS_BUCKET_NAME):
@@ -144,7 +152,7 @@ async def generate_images(imagen_prompt: str, tool_context: ToolContext):
         traceback.print_exc() # Print full traceback for unexpected errors
         return {"status": "error", "message": f"Image generation failed: {e}"}
 
-
+@tracer.start_as_current_span("save_to_gcs")
 def save_to_gcs(tool_context: ToolContext, image_bytes, filename: str, counter: str):
     # --- Save to GCS ---
     storage_client = storage.Client()  # Initialize GCS client
