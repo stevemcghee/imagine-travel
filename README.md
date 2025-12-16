@@ -195,6 +195,30 @@ The observability setup is managed in `backend/otel_setup.py`.
     ./run_backend.sh
     ```
 
+### Cloud Run Deployment Prerequisites (for Telemetry)
+
+For telemetry to be exported directly to Google Cloud Trace and Logging when deployed on Cloud Run, the **Service Account** associated with your Cloud Run service must have the following IAM roles:
+
+*   **Cloud Trace Agent** (`roles/cloudtrace.agent`): Allows the service to write traces.
+*   **Logs Writer** (`roles/logging.logWriter`): Allows the service to write logs.
+*   **Monitoring Metric Writer** (`roles/monitoring.metricWriter`): Allows the service to write metrics (if configured).
+
+You can grant these roles using the `gcloud` CLI. Replace `YOUR_SERVICE_ACCOUNT_EMAIL` (e.g., `service-PROJECT_NUMBER@serverless-robot-prod.iam.gserviceaccount.com`) and `YOUR_PROJECT_ID` with your actual values:
+
+```bash
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="serviceAccount:YOUR_SERVICE_ACCOUNT_EMAIL" \
+    --role="roles/cloudtrace.agent"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="serviceAccount:YOUR_SERVICE_ACCOUNT_EMAIL" \
+    --role="roles/logging.logWriter"
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="serviceAccount:YOUR_SERVICE_ACCOUNT_EMAIL" \
+    --role="roles/monitoring.metricWriter"
+```
+
 ### Documentation References
 *   [OpenTelemetry Python Documentation](https://opentelemetry.io/docs/languages/python/)
 *   [Google Cloud Trace with OpenTelemetry](https://cloud.google.com/trace/docs/setup/python-ot)
