@@ -1,0 +1,43 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+
+processors:
+  batch:
+    send_batch_max_size: 200
+    send_batch_size: 200
+    timeout: 5s
+  resourcedetection:
+    detectors: [gcp, env, system]
+    timeout: 10s
+
+exporters:
+  # Debug logging to console
+  debug:
+    verbosity: detailed
+
+  # Export to Google Cloud Trace and Logging
+  # Requires GOOGLE_APPLICATION_CREDENTIALS to be set or standard gcloud auth
+  googlecloud:
+    project: "my-gcp-project-id" # REPLACE THIS or rely on auto-detection
+    log:
+      default_log_name: opentelemetry.io/collector-exported-log
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, resourcedetection]
+      exporters: [debug, googlecloud]
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resourcedetection]
+      exporters: [debug, googlecloud]
+    logs:
+      receivers: [otlp]
+      processors: [batch, resourcedetection]
+      exporters: [debug, googlecloud]

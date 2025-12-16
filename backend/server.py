@@ -36,6 +36,13 @@ except ImportError as e:
 from agents.travel_imagination import build_travel_agent as build_travel_agent_adk
 # Add other agents here if they exist
 
+# Import Telemetry
+try:
+    from otel_setup import init_telemetry
+except ImportError:
+    print("Warning: Could not import otel_setup. Telemetry will be disabled.")
+    def init_telemetry(app, service_name): pass
+
 # Agent registry
 AGENT_REGISTRY = {
     "travel_agent": build_travel_agent_adk,
@@ -48,6 +55,9 @@ app = FastAPI(
     description="API server for ADK agents",
     version="1.0.0",
 )
+
+# Initialize Telemetry
+init_telemetry(app, service_name="travel-imagination-agent")
 
 app.add_middleware(
     CORSMiddleware,
