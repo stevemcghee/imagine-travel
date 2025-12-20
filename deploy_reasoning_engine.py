@@ -23,15 +23,6 @@ class TravelAgent:
         self.maps_api_key = maps_api_key
         self.staging_bucket = staging_bucket
         
-        # Set environment variables for the ADK and tools
-        # These are set here for the remote execution environment
-        os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
-        os.environ["MAPS_API_KEY"] = maps_api_key
-        os.environ["GCS_BUCKET_NAME"] = staging_bucket
-        # Set defaults for others if needed
-        os.environ["IMAGEN_MODEL"] = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
-        os.environ["GENAI_MODEL"] = os.getenv("GENAI_MODEL", "gemini-2.0-flash")
-        
         self.agent = None
         self.runner = None
     def set_up(self):
@@ -49,6 +40,7 @@ class TravelAgent:
         import os
         import asyncio
         import logging
+        import vertexai # Import vertexai locally on remote
         from backend.agents.travel_imagination import build_travel_agent
         from google.adk.runners import InMemoryRunner
         from google.genai import types
@@ -57,15 +49,15 @@ class TravelAgent:
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
 
+        # Initialize Vertex AI for the remote environment
+        vertexai.init(project=self.project_id, location=self.location, staging_bucket=self.staging_bucket)
+        # Set other env vars needed by tools that use os.getenv
+        os.environ["MAPS_API_KEY"] = self.maps_api_key
+        os.environ["GCS_BUCKET_NAME"] = self.staging_bucket
+        os.environ["IMAGEN_MODEL"] = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
+        os.environ["GENAI_MODEL"] = os.getenv("GENAI_MODEL", "gemini-2.0-flash")
+
         if self.agent is None:
-            # Set environment variables for the ADK and tools
-            os.environ["GOOGLE_CLOUD_PROJECT"] = self.project_id
-            os.environ["MAPS_API_KEY"] = self.maps_api_key
-            os.environ["GCS_BUCKET_NAME"] = self.staging_bucket
-            # Set defaults for others if needed
-            os.environ["IMAGEN_MODEL"] = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
-            os.environ["GENAI_MODEL"] = os.getenv("GENAI_MODEL", "gemini-2.0-flash")
-            
             logger.info("Initializing Travel Agent...")
             self.agent = build_travel_agent()
             self.runner = InMemoryRunner(agent=self.agent, app_name="travel_imagination_app")
