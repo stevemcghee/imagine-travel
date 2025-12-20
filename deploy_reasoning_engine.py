@@ -10,7 +10,7 @@ from vertexai.preview import reasoning_engines
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Define the Agent Class
+    # Define the Agent Class
 class TravelAgent:
     def __init__(self, 
                  project_id: str, 
@@ -23,9 +23,17 @@ class TravelAgent:
         self.maps_api_key = maps_api_key
         self.staging_bucket = staging_bucket
         
+        # Set environment variables for the ADK and tools
+        # These are set here for the remote execution environment
+        os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
+        os.environ["MAPS_API_KEY"] = maps_api_key
+        os.environ["GCS_BUCKET_NAME"] = staging_bucket
+        # Set defaults for others if needed
+        os.environ["IMAGEN_MODEL"] = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
+        os.environ["GENAI_MODEL"] = os.getenv("GENAI_MODEL", "gemini-2.0-flash")
+        
         self.agent = None
         self.runner = None
-
     def set_up(self):
         """
         Explicit setup method to initialize the agent.
@@ -50,14 +58,6 @@ class TravelAgent:
         logger = logging.getLogger(__name__)
 
         if self.agent is None:
-            # Set environment variables for the ADK and tools
-            os.environ["GOOGLE_CLOUD_PROJECT"] = self.project_id
-            os.environ["MAPS_API_KEY"] = self.maps_api_key
-            os.environ["GCS_BUCKET_NAME"] = self.staging_bucket
-            # Set defaults for others if needed
-            os.environ["IMAGEN_MODEL"] = "imagen-3.0-generate-002"
-            os.environ["GENAI_MODEL"] = "gemini-2.0-flash"
-            
             logger.info("Initializing Travel Agent...")
             self.agent = build_travel_agent()
             self.runner = InMemoryRunner(agent=self.agent, app_name="travel_imagination_app")
