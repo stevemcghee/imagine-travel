@@ -42,7 +42,7 @@ class TravelAgent:
         """
         pass
 
-    def query(self, input_text: str, session_id: str = "default_session") -> str:
+    async def query(self, input_text: str, session_id: str = "default_session") -> str:
         """
         Runs the agent with the given input text.
         """
@@ -58,6 +58,14 @@ class TravelAgent:
         logger = logging.getLogger(__name__)
 
         if self.agent is None:
+            # Set environment variables for the ADK and tools
+            os.environ["GOOGLE_CLOUD_PROJECT"] = self.project_id
+            os.environ["MAPS_API_KEY"] = self.maps_api_key
+            os.environ["GCS_BUCKET_NAME"] = self.staging_bucket
+            # Set defaults for others if needed
+            os.environ["IMAGEN_MODEL"] = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
+            os.environ["GENAI_MODEL"] = os.getenv("GENAI_MODEL", "gemini-2.0-flash")
+            
             logger.info("Initializing Travel Agent...")
             self.agent = build_travel_agent()
             self.runner = InMemoryRunner(agent=self.agent, app_name="travel_imagination_app")
@@ -107,12 +115,13 @@ class TravelAgent:
             
             return "Agent finished but no state returned."
 
-        # Run the async function synchronously
+        # Await the async function
         try:
-            return asyncio.run(run_async())
+            return await run_async()
         except Exception as e:
             logger.error(f"Error executing agent: {e}")
             return f"Error: {e}"
+
 
 # Main deployment script
 if __name__ == "__main__":
