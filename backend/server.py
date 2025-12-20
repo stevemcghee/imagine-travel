@@ -30,6 +30,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.google_genai import GoogleGenAiSdkInstrumentor
+from vertexai.preview import reasoning_engines
 
 # Import ADK components
 try:
@@ -141,6 +142,43 @@ async def websocket_endpoint(
             await websocket.send_json({"type": "error", "message": "No query provided in message."})
             return
 
+        # Check for Agent Engine delegation
+        agent_engine_resource = os.getenv("AGENT_ENGINE_RESOURCE_NAME")
+        if agent_engine_resource:
+             logger.info(f"WS ({agent_name}): Delegating to Agent Engine: {agent_engine_resource}")
+             await websocket.send_json({"type": "log", "message": "[System]: Delegating request to Vertex AI Agent Engine..."})
+             
+             try:
+                remote_agent = reasoning_engines.ReasoningEngine(agent_engine_resource)
+                response_text = await asyncio.to_thread(
+                    remote_agent.query, 
+                    input_text=query_input, 
+                    session_id=session_id
+                )
+                
+                # Parse response
+                final_data = {}
+                if "Story: " in response_text:
+                    parts = response_text.split("Image URL: ")
+                    story_part = parts[0].replace("Story: ", "").strip()
+                    final_data["current_draft"] = story_part
+                    if len(parts) > 1:
+                        final_data["image_url"] = parts[1].strip()
+                else:
+                    final_data["current_draft"] = response_text
+                
+                # Send result
+                await websocket.send_json({"type": "result", "data": {"final_data": final_data}})
+                # Close connection after one-shot response as Agent Engine doesn't stream yet
+                # await websocket.close() 
+                # Better to keep open or let client close? Client usually waits.
+                return
+
+             except Exception as e:
+                 logger.error(f"WS Agent Engine Error: {e}")
+                 await websocket.send_json({"type": "error", "message": f"Agent Engine Error: {e}"})
+                 return
+
         # Instantiate the agent and runner
         agent = agent_builder()
         runner = Runner(agent=agent, app_name="travel_imagination_app")       
@@ -243,6 +281,36 @@ async def run_agent_api(
     agent_builder = AGENT_REGISTRY[agent_name]
 
     logger.info(f"API ({agent_name}): Received query: {query_data.query}")
+    
+    # Check for Agent Engine delegation
+    agent_engine_resource = os.getenv("AGENT_ENGINE_RESOURCE_NAME")
+    if agent_engine_resource:
+        logger.info(f"Delegating request to Agent Engine: {agent_engine_resource}")
+        try:
+            remote_agent = reasoning_engines.ReasoningEngine(agent_engine_resource)
+            # Run in threadpool to avoid blocking event loop
+            response_text = await asyncio.to_thread(
+                remote_agent.query, 
+                input_text=query_data.query, 
+                session_id=query_data.session_id or "default"
+            )
+            
+            # Parse the response text back into final_data
+            final_data = {}
+            if "Story: " in response_text:
+                parts = response_text.split("Image URL: ")
+                story_part = parts[0].replace("Story: ", "").strip()
+                final_data["current_draft"] = story_part
+                if len(parts) > 1:
+                    final_data["image_url"] = parts[1].strip()
+            else:
+                final_data["current_draft"] = response_text
+                
+            return AgentRunResponse(status="success", final_data=final_data, history=[])
+        except Exception as e:
+            logger.error(f"Agent Engine Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Agent Engine Error: {str(e)}")
+
     try:
         agent = agent_builder()
         runner = Runner(agent=agent, app_name="travel_imagination_app")       
