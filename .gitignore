@@ -25,3 +25,4 @@ frontend/public/generated_images/
 
 # Gemini related
 .gemini/
+agent_engine_resource.txt
