@@ -159,4 +159,8 @@ if __name__ == "__main__":
     
     print(f"Deployment Complete!")
     print(f"Reasoning Engine Name: {remote_agent.resource_name}")
-    print(f"Operation Name: {remote_agent.operation_name}")
+    
+    # Write resource name to file for the shell script to pick up
+    # This file is temporary and should be ignored by git (added to .gitignore)
+    with open("agent_engine_resource.txt", "w") as f:
+        f.write(remote_agent.resource_name)
