@@ -149,12 +149,28 @@ if __name__ == "__main__":
     with open("backend/requirements.txt", "r") as f:
         requirements = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
+    DISPLAY_NAME = "Imagine Travel Agent"
+
+    print(f"Checking for existing Reasoning Engines with name '{DISPLAY_NAME}'...")
+    try:
+        existing_engines = reasoning_engines.ReasoningEngine.list(location=LOCATION)
+        for engine in existing_engines:
+            if engine.display_name == DISPLAY_NAME:
+                print(f"Deleting existing engine: {engine.resource_name}...")
+                try:
+                    engine.delete()
+                    print("Deleted.")
+                except Exception as e:
+                    print(f"Failed to delete {engine.resource_name}: {e}")
+    except Exception as e:
+        print(f"Warning: Failed to list/cleanup existing engines: {e}")
+
     print("Deploying Reasoning Engine...")
     remote_agent = reasoning_engines.ReasoningEngine.create(
         agent_instance,
         requirements=requirements,
         extra_packages=["./backend"], # Upload the backend directory
-        display_name="Imagine Travel Agent",
+        display_name=DISPLAY_NAME,
         description="ADK-based Travel Agent",
     )
     
