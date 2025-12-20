@@ -10,8 +10,14 @@ httpx
 google-adk
 google-cloud-storage
 # OpenTelemetry (ADK recommended)
-opentelemetry-instrumentation-google-genai
 opentelemetry-exporter-gcp-logging
 opentelemetry-exporter-gcp-monitoring
-opentelemetry-exporter-otlp # Includes opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-gcp-trace
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-otlp-proto-http
 opentelemetry-instrumentation-vertexai
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-requests
+opentelemetry-instrumentation-google-genai
+opentelemetry-instrumentation-httpx==0.58b0
+opentelemetry-sdk

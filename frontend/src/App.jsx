@@ -228,7 +228,7 @@ function App() {
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
         <div className="max-w-6xl w-full text-center">
           <h1 className="text-6xl md:text-9xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 mb-10 drop-shadow-sm pb-4 tracking-tighter">
-            Travel Memory Architect
+            Imagine Travel
           </h1>
           <p className="text-3xl text-gray-500 mb-16 font-light tracking-wide">
             Where have you been? Let's write the story.

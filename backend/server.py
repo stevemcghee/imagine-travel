@@ -20,6 +20,17 @@ import json
 import inspect
 from google.genai import types
 
+# OpenTelemetry Imports
+from opentelemetry import trace
+from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.google_genai import GoogleGenAiSdkInstrumentor
+
 # Import ADK components
 try:
     # Reverting to the 'google.adk' namespace based on initial agent code structure
@@ -48,6 +59,33 @@ app = FastAPI(
     description="API server for ADK agents",
     version="1.0.0",
 )
+
+# --- OpenTelemetry Setup ---
+def setup_opentelemetry(app: FastAPI):
+    # Set up the Tracer Provider
+    resource = Resource(attributes={
+        SERVICE_NAME: "adk-agent-backend"
+    })
+    trace.set_tracer_provider(TracerProvider(resource=resource))
+    tracer_provider = trace.get_tracer_provider()
+
+    # Cloud Trace Exporter
+    cloud_trace_exporter = CloudTraceSpanExporter()
+    
+    span_processor = BatchSpanProcessor(cloud_trace_exporter)
+    tracer_provider.add_span_processor(span_processor)
+
+    # Instrument libraries
+    RequestsInstrumentor().instrument()
+    HTTPXClientInstrumentor().instrument()
+    GoogleGenAiSdkInstrumentor().instrument()
+    
+    # Instrument FastAPI
+    FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider)
+    logger.info(f"OpenTelemetry setup complete. Exporting to Google Cloud Trace.")
+
+# Initialize OTel
+setup_opentelemetry(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -118,7 +156,7 @@ async def websocket_endpoint(
         final_state = {}
 
         # Run the agent and stream events
-        async for event in runner.run_async(user_id=user_id, session_id=session_id, new_message=new_message, state_delta={"initial_input": query_input}):
+        async for event in runner.run_async(user_id=user_id, session_id=session_id, new_message=new_message, state_delta={"initial_input": query_input, "image_url": "No image generated yet"}):
             
             # 1. Handle State Updates
             if event.actions and event.actions.state_delta:
@@ -227,7 +265,7 @@ async def run_agent_api(
             user_id=query_data.user_id,
             session_id=session_id,
             new_message=new_message,
-            state_delta={"initial_input": query_data.query}
+            state_delta={"initial_input": query_data.query, "image_url": "No image generated yet"}
         )
         
         # Iterate through the events and collect them

@@ -8,6 +8,7 @@ echo "Deploying Imagine Travel to Cloud Run..."
 
 gcloud run deploy imagine-travel \
   --source . \
+  --project smcghee-ai-playground \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \

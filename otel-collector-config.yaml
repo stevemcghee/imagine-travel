@@ -23,7 +23,7 @@ exporters:
   # Export to Google Cloud Trace and Logging
   # Requires GOOGLE_APPLICATION_CREDENTIALS to be set or standard gcloud auth
   googlecloud:
-    project: "my-gcp-project-id" # REPLACE THIS or rely on auto-detection
+    project: "smcghee-ai-playground"
     log:
       default_log_name: opentelemetry.io/collector-exported-log
 
