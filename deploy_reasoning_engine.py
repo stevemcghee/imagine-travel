@@ -52,6 +52,8 @@ class TravelAgent:
         # Initialize Vertex AI for the remote environment
         vertexai.init(project=self.project_id, location=self.location, staging_bucket=self.staging_bucket)
         # Set other env vars needed by tools that use os.getenv
+        os.environ["GOOGLE_CLOUD_PROJECT"] = self.project_id
+        os.environ["GOOGLE_CLOUD_LOCATION"] = self.location
         os.environ["MAPS_API_KEY"] = self.maps_api_key
         os.environ["GCS_BUCKET_NAME"] = self.staging_bucket
         os.environ["IMAGEN_MODEL"] = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
@@ -69,7 +71,11 @@ class TravelAgent:
                 user_id="default_user",
                 session_id=session_id,
                 app_name="travel_imagination_app",
-                state={"image_url": "No image generated yet"}
+                state={
+                    "image_url": "No image generated yet",
+                    "config_project_id": self.project_id,
+                    "config_location": self.location
+                }
             )
             
             new_message = types.Content(

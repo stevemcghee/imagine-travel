@@ -37,9 +37,15 @@ def get_maps_mcp_toolset():
     return tools
 
 async def generate_images(imagen_prompt: str, tool_context: ToolContext):
+    # Try getting config from session state first, then env vars
+    project = tool_context.state.get("config_project_id") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+    location = tool_context.state.get("config_location") or os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+    
+    logger.info(f"Generating images. Project: {project}, Location: {location}")
     logger.debug(f"FRONTEND_STATIC_PATH env var: {os.getenv('FRONTEND_STATIC_PATH')}")
+    
     genai_client = genai.Client(
-        vertexai=True, project=os.environ.get("GOOGLE_CLOUD_PROJECT"), location="global"
+        vertexai=True, project=project, location=location
     )
     try:
         logger.debug(f"Sending Imagen prompt: {imagen_prompt}")
