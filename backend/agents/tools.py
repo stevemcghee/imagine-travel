@@ -41,9 +41,15 @@ async def generate_images(imagen_prompt: str, tool_context: ToolContext):
     project = tool_context.state.get("config_project_id") or os.environ.get("GOOGLE_CLOUD_PROJECT")
     location = tool_context.state.get("config_location") or os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
     
-    logger.info(f"Generating images. Project: {project}, Location: {location}")
-    logger.debug(f"FRONTEND_STATIC_PATH env var: {os.getenv('FRONTEND_STATIC_PATH')}")
+    logger.info(f"DEBUG: generate_images called. Project: '{project}', Location: '{location}'")
     
+    # Try to get default credentials to debug auth status
+    try:
+        credentials, default_project = google.auth.default()
+        logger.info(f"DEBUG: Default Google Auth Credentials found. Project: '{default_project}'. Creds type: {type(credentials)}")
+    except Exception as e:
+        logger.warning(f"DEBUG: Could not get default Google Auth Credentials: {e}")
+
     genai_client = genai.Client(
         vertexai=True, project=project, location=location
     )
