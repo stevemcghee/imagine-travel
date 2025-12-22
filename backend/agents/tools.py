@@ -13,10 +13,12 @@ from . import config
 # Setup logging
 logger = logging.getLogger(__name__)
 
-MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY') or os.getenv('MAPS_API_KEY', 'no_api_found')
 MAPS_MCP_URL = "https://mapstools.googleapis.com/mcp" 
 
 def get_maps_mcp_toolset():
+    # Read API Key inside the function to ensure env vars are set (e.g. by Agent Engine)
+    MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY') or os.getenv('MAPS_API_KEY', 'no_api_found')
+    
     masked_key = MAPS_API_KEY[:4] + "..." + MAPS_API_KEY[-4:] if len(MAPS_API_KEY) > 8 else "INVALID/SHORT"
     logger.debug(f"Configuring MCP Toolset with API Key: {masked_key}")
     if MAPS_API_KEY == 'no_api_found':
@@ -41,7 +43,8 @@ async def generate_images(imagen_prompt: str, tool_context: ToolContext):
     project = tool_context.state.get("config_project_id") or os.environ.get("GOOGLE_CLOUD_PROJECT")
     location = tool_context.state.get("config_location") or os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
     
-    logger.info(f"DEBUG: generate_images called. Project: '{project}', Location: '{location}'")
+    print(f"DEBUG: generate_images called. Project: '{project}', Location: '{location}'")
+    logger.info(f"Generating images. Project: {project}, Location: {location}")
     
     # Try to get default credentials to debug auth status
     try:

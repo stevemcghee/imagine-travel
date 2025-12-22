@@ -49,21 +49,30 @@ class TravelAgent:
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
 
+        # Always ensure environment and vertexai are initialized for every request
+        print(f"DEBUG: Setting up environment. Project: {self.project_id}, Location: {self.location}")
+        
         # Initialize Vertex AI for the remote environment
         vertexai.init(project=self.project_id, location=self.location, staging_bucket=self.staging_bucket)
-        # Set other env vars needed by tools that use os.getenv
+        
+        # Set other env vars needed by tools/ADK that use os.getenv
         os.environ["GOOGLE_CLOUD_PROJECT"] = self.project_id
         os.environ["GOOGLE_CLOUD_LOCATION"] = self.location
         os.environ["MAPS_API_KEY"] = self.maps_api_key
         os.environ["GCS_BUCKET_NAME"] = self.staging_bucket
-        os.environ["IMAGEN_MODEL"] = os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002")
-        os.environ["GENAI_MODEL"] = os.getenv("GENAI_MODEL", "gemini-2.0-flash")
+        # Ensure models are set if not already
+        if "IMAGEN_MODEL" not in os.environ:
+            os.environ["IMAGEN_MODEL"] = "imagen-3.0-generate-002"
+        if "GENAI_MODEL" not in os.environ:
+            os.environ["GENAI_MODEL"] = "gemini-2.0-flash"
+        
+        print(f"DEBUG: Env vars set. GOOGLE_CLOUD_PROJECT={os.environ.get('GOOGLE_CLOUD_PROJECT')}")
 
         if self.agent is None:
-            logger.info("Initializing Travel Agent...")
+            print("DEBUG: Initializing Travel Agent (Lazy Load)...")
             self.agent = build_travel_agent()
             self.runner = InMemoryRunner(agent=self.agent, app_name="travel_imagination_app")
-            logger.info("Travel Agent initialized.")
+            print("DEBUG: Travel Agent initialized.")
 
         async def run_async():
             # Create a session
@@ -117,8 +126,9 @@ class TravelAgent:
         try:
             return await run_async()
         except Exception as e:
-            logger.error(f"Error executing agent: {e}")
-            return f"Error: {e}"
+            debug_info = f"Env Project: {os.environ.get('GOOGLE_CLOUD_PROJECT')}, Env Location: {os.environ.get('GOOGLE_CLOUD_LOCATION')}, Self Project: {self.project_id}"
+            logger.error(f"Error executing agent: {e}. Debug: {debug_info}")
+            return f"Error: {e}. Debug: {debug_info}"
 
 
 # Main deployment script
